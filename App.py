@@ -14,29 +14,51 @@ periodo = st.sidebar.selectbox("Historial para análisis:", ["6mo", "1y", "2y"])
 
 # Función para procesar la lógica de cada ticker
 def procesar_ticker(symbol):
-    df = yf.download(symbol, period=periodo, interval="1d", progress=False)
-    if df.empty: return None
+    ticker_obj = yf.Ticker(symbol)
+    # Pedimos 1 año para que el promedio de 50 días (SMA50) tenga suficientes datos
+    df = ticker_obj.history(period="1y") 
     
-    # Cálculo de indicadores
+    if df.empty or len(df) < 50: return None
+    
+    # --- Cálculos Técnicos ---
     df['SMA50'] = df['Close'].rolling(window=50).mean()
+    
+    # Cálculo del RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    precio = df['Close'].iloc[-1]
-    rsi = df['RSI'].iloc[-1]
-    sma50 = df['SMA50'].iloc[-1]
+    # EXTRACCIÓN CRÍTICA: Convertimos a número simple (float)
+    precio = float(df['Close'].iloc[-1])
+    rsi = float(df['RSI'].iloc[-1])
+    sma50 = float(df['SMA50'].iloc[-1])
     
-    # Lógica de Veredicto
-    if rsi < 35 and precio > sma50: veredicto = "🟢 COMPRA (DIP)"
-    elif rsi > 70: veredicto = "🔴 VENTA / CARO"
-    elif precio > sma50: veredicto = "🟡 MANTENER"
-    else: veredicto = "⚪ NEUTRAL / DEBIL"
-    
-    return {"Ticker": symbol, "Precio": round(precio, 2), "RSI": round(rsi, 2), "Señal": veredicto}
+    # --- Datos Fundamentales ---
+    info = ticker_obj.info
+    pe_ratio = info.get('trailingPE', 'N/A')
+    div_yield = info.get('dividendYield', 0)
+    div_yield = f"{div_yield * 100:.2f}%" if div_yield else "0%"
 
+    # --- Lógica de Señal Corregida ---
+    if rsi < 35 and precio > sma50: 
+        semaforo = "🟢 COMPRA (DIP)"
+    elif rsi > 70: 
+        semaforo = "🔴 VENTA / CARO"
+    elif precio > sma50: 
+        semaforo = "🟡 MANTENER"
+    else: 
+        semaforo = "⚪ NEUTRAL"
+    
+    return {
+        "Ticker": symbol,
+        "Precio": round(precio, 2),
+        "RSI": round(rsi, 2),
+        "P/E Ratio": pe_ratio,
+        "Dividendos": div_yield,
+        "Señal": semaforo
+    }
 # --- TABLA COMPARATIVA ---
 st.subheader("📊 Comparativa de Señales")
 lista_tickers = [t.strip().upper() for t in tickers_input.split(",")]

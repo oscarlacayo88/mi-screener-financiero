@@ -1,68 +1,63 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
 
-# Configuración de la página
-st.set_page_config(page_title="Smart Financial Screener", layout="wide")
+st.set_page_config(page_title="Multi-Asset Screener", layout="wide")
 
-st.title("📊 Smart Financial Screener")
-st.markdown("Analizador de activos en tiempo real con lógica de trading algorítmico.")
+st.title("🚀 Screener de Inversión Multiactivo")
 
 # --- BARRA LATERAL ---
-st.sidebar.header("Configuración")
-ticker = st.sidebar.text_input("Símbolo del Activo (Ticker)", value="QQQ").upper()
-periodo = st.sidebar.selectbox("Periodo de análisis", ["6mo", "1y", "2y", "5y"])
-umbral_rsi_baja = st.sidebar.slider("Umbral Sobreventa (Compra)", 0, 100, 30)
-umbral_rsi_alta = st.sidebar.slider("Umbral Sobrecompra (Venta)", 0, 100, 70)
+st.sidebar.header("Panel de Control")
+tickers_input = st.sidebar.text_input("Ingresa los Tickers (separados por coma):", "QQQ, VGT, AAPL, SPY")
+periodo = st.sidebar.selectbox("Historial para análisis:", ["6mo", "1y", "2y"])
 
-# --- OBTENCIÓN DE DATOS ---
-@st.cache_data
-def cargar_datos(symbol, p):
-    df = yf.download(symbol, period=p, interval="1d")
-    return df
-
-data = cargar_datos(ticker, periodo)
-
-if not data.empty:
-    # Cálculos Técnicos
-    data['SMA50'] = data['Close'].rolling(window=50).mean()
-    data['SMA200'] = data['Close'].rolling(window=200).mean()
+# Función para procesar la lógica de cada ticker
+def procesar_ticker(symbol):
+    df = yf.download(symbol, period=periodo, interval="1d", progress=False)
+    if df.empty: return None
     
-    # Lógica RSI
-    delta = data['Close'].diff()
+    # Cálculo de indicadores
+    df['SMA50'] = df['Close'].rolling(window=50).mean()
+    delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
-    data['RSI'] = 100 - (100 / (1 + rs))
+    df['RSI'] = 100 - (100 / (1 + rs))
     
-    precio_act = float(data['Close'].iloc[-1].item())
-    rsi_act = float(data['RSI'].iloc[-1].item())
-    sma50_act = float(data['SMA50'].iloc[-1].item())
-
-    # --- INDICADORES VISUALES (Métricas) ---
-    col1, col2, col3 = st.columns(3)
+    precio = df['Close'].iloc[-1]
+    rsi = df['RSI'].iloc[-1]
+    sma50 = df['SMA50'].iloc[-1]
     
-    with col1:
-        st.metric("Precio Actual", f"${precio_act:,.2f}")
-    with col2:
-        st.metric("RSI (14d)", f"{rsi_act:.2f}")
-    with col3:
-        # Lógica de Semáforo
-        if rsi_act < umbral_rsi_baja and precio_act > sma50_act:
-            st.success("SEÑAL: COMPRA (DIP)")
-        elif rsi_act > umbral_rsi_alta:
-            st.error("SEÑAL: VENTA / CARO")
-        else:
-            st.info("SEÑAL: NEUTRAL / MANTENER")
+    # Lógica de Veredicto
+    if rsi < 35 and precio > sma50: veredicto = "🟢 COMPRA (DIP)"
+    elif rsi > 70: veredicto = "🔴 VENTA / CARO"
+    elif precio > sma50: veredicto = "🟡 MANTENER"
+    else: veredicto = "⚪ NEUTRAL / DEBIL"
+    
+    return {"Ticker": symbol, "Precio": round(precio, 2), "RSI": round(rsi, 2), "Señal": veredicto}
 
-    # --- GRÁFICA INTERACTIVA ---
+# --- TABLA COMPARATIVA ---
+st.subheader("📊 Comparativa de Señales")
+lista_tickers = [t.strip().upper() for t in tickers_input.split(",")]
+resultados = []
+
+for t in lista_tickers:
+    res = procesar_ticker(t)
+    if res: resultados.append(res)
+
+if resultados:
+    df_res = pd.DataFrame(resultados)
+    st.table(df_res) # Mostramos la tabla comparativa
+
+# --- DETALLE INDIVIDUAL ---
+st.divider()
+st.subheader("🔍 Análisis Detallado")
+ticker_detalle = st.selectbox("Selecciona un ticker para ver su gráfica:", lista_tickers)
+datos_det = yf.download(ticker_detalle, period=periodo)
+
+if not datos_det.empty:
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Precio', line=dict(color='royalblue', width=2)))
-    fig.add_trace(go.Scatter(x=data.index, y=data['SMA50'], name='Promedio 50d', line=dict(color='orange', dash='dot')))
-    
-    fig.update_layout(title=f"Evolución Histórica de {ticker}", xaxis_title="Fecha", yaxis_title="Precio (USD)", template="plotly_white")
+    fig.add_trace(go.Scatter(x=datos_det.index, y=datos_det['Close'], name='Precio'))
+    fig.update_layout(template="plotly_dark", height=400)
     st.plotly_chart(fig, use_container_width=True)
-
-else:
-    st.error("Error al cargar datos. Verifica el Ticker.")

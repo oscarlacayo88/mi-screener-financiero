@@ -36,9 +36,9 @@ if not data.empty:
     rs = gain / loss
     data['RSI'] = 100 - (100 / (1 + rs))
     
-    precio_act = data['Close'].iloc[-1]
-    rsi_act = data['RSI'].iloc[-1]
-    sma50_act = data['SMA50'].iloc[-1]
+    precio_act = float(data['Close'].iloc[-1].item())
+    rsi_act = float(data['RSI'].iloc[-1].item())
+    sma50_act = float(data['SMA50'].iloc[-1].item())
 
     # --- INDICADORES VISUALES (Métricas) ---
     col1, col2, col3 = st.columns(3)

@@ -60,26 +60,49 @@ def procesar_ticker(symbol):
         "Señal": semaforo
     }
 # --- TABLA COMPARATIVA ---
-st.subheader("📊 Comparativa de Señales")
-lista_tickers = [t.strip().upper() for t in tickers_input.split(",")]
-resultados = []
-
-for t in lista_tickers:
-    res = procesar_ticker(t)
-    if res: resultados.append(res)
-
 if resultados:
     df_res = pd.DataFrame(resultados)
-    st.table(df_res) # Mostramos la tabla comparativa
+    st.table(df_res) 
 
-# --- DETALLE INDIVIDUAL ---
-st.divider()
-st.subheader("🔍 Análisis Detallado")
-ticker_detalle = st.selectbox("Selecciona un ticker para ver su gráfica:", lista_tickers)
-datos_det = yf.download(ticker_detalle, period=periodo)
+    # --- SECCIÓN DE GRÁFICA DETALLADA ---
+    st.divider()
+    st.subheader("🔍 Análisis Visual Detallado")
+    
+    # El usuario elige uno de los tickers que escribió arriba
+    ticker_para_grafica = st.selectbox("Selecciona un activo para ver su gráfico:", lista_tickers)
+    
+    # Descargamos datos frescos solo para ese activo seleccionado
+    datos_grafica = yf.download(ticker_para_grafica, period=periodo, interval="1d")
+    
+    if not datos_grafica.empty:
+        # Creamos una gráfica interactiva profesional
+        fig = go.Figure()
+        
+        # Línea de Precio
+        fig.add_trace(go.Scatter(
+            x=datos_grafica.index, 
+            y=datos_grafica['Close'].squeeze(), 
+            name='Precio de Cierre',
+            line=dict(color='#1f77b4', width=2)
+        ))
+        
+        # Promedio de 50 días para ver la tendencia
+        sma50_graf = datos_grafica['Close'].rolling(window=50).mean()
+        fig.add_trace(go.Scatter(
+            x=datos_grafica.index, 
+            y=sma50_graf.squeeze(), 
+            name='Tendencia (SMA 50)',
+            line=dict(color='orange', dash='dot')
+        ))
 
-if not datos_det.empty:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=datos_det.index, y=datos_det['Close'], name='Precio'))
-    fig.update_layout(template="plotly_dark", height=400)
-    st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            title=f"Histórico de {ticker_para_grafica}",
+            xaxis_title="Fecha",
+            yaxis_title="Precio (USD)",
+            template="plotly_dark", # Se ve más profesional en negro
+            hovermode="x unified"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("No se pudieron cargar los datos para la gráfica.")

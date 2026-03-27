@@ -3,20 +3,42 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="Screener Financiero Pro", layout="wide")
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import plotly.graph_objects as go
+from streamlit_searchbox import st_searchbox # <--- Nueva importación
 
-st.title("🚀 Screener de Inversión Estricto")
-st.markdown("Análisis de alta precisión: Solo verás 'Compra' en caídas técnicas reales.")
+# 1. FUNCIÓN DE BÚSQUEDA REAL EN TIEMPO REAL
+def buscar_tickers_en_yahoo(search_term: str):
+    if not search_term:
+        return []
+    try:
+        # Consultamos a Yahoo Finance por coincidencias
+        yquery = yf.Search(search_term, max_results=8)
+        # Formateamos la sugerencia como "AAPL - Apple Inc."
+        return [f"{q['symbol']} - {q['shortname']}" for q in yquery.quotes]
+    except:
+        return []
 
-# --- LISTA DE SUGERENCIAS ---
-SUGERENCIAS = ["QQQ", "VGT", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "NVDA", "SPY", "AMD"]
+# 2. BARRA LATERAL CON BUSCADOR DINÁMICO
+st.sidebar.header("🔍 Buscador Universal")
 
-# 2. BARRA LATERAL
-st.sidebar.header("Panel de Control")
-ticker_buscado = st.sidebar.selectbox("Buscador Inteligente:", options=SUGERENCIAS)
-tickers_manuales = st.sidebar.text_input("Otros Tickers (separados por coma):", "")
-periodo = st.sidebar.selectbox("Rango de Gráfica:", ["6mo", "1y", "2y"], index=1)
+# Este cuadro reemplaza al selectbox anterior
+ticker_seleccionado_full = st_searchbox(
+    buscar_tickers_en_yahoo,
+    key="buscador_universal",
+    placeholder="Escribe: Nvidia, QQQ, Walmart...",
+    label="Busca cualquier activo del mundo:"
+)
+
+# Extraemos solo el Ticker (la parte antes del guion)
+ticker_final = ""
+if ticker_seleccionado_full:
+    ticker_final = ticker_seleccionado_full.split(" - ")[0]
+
+# --- El resto de tu lógica de procesamiento sigue igual ---
+# Solo asegúrate de usar `ticker_final` en tu lista_final
 
 # 3. FUNCIÓN DE PROCESAMIENTO (CON CIERRE CORRECTO)
 def procesar_ticker(symbol):

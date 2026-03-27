@@ -86,14 +86,24 @@ if resultados:
     st.subheader("📊 Comparativa de Mercado")
     df_res = pd.DataFrame(resultados)
     
-    # Estilo visual para la tabla
+    # Estilo visual para la tabla (Mejorado para legibilidad)
     def color_señal(val):
-        color = '#1e1e1e'
-        if 'COMPRA' in val: color = '#06402B'
-        if 'VENTA' in val: color = '#4A0E0E'
-        if 'ALCISTA' in val: color = '#1B263B'
-        return f'background-color: {color}'
+        color_fondo = '#1e1e1e' # Gris oscuro por defecto
+        color_texto = '#ffffff' # Blanco por defecto
+        
+        if 'COMPRA' in val: 
+            color_fondo = '#008000' # Verde fuerte
+        elif 'VENTA' in val: 
+            color_fondo = '#FF0000' # Rojo fuerte
+        elif 'ALCISTA' in val: 
+            color_fondo = '#0055ff' # Azul vibrante
+        elif 'EVITAR' in val:
+            color_fondo = '#333333' # Gris muy oscuro
+            color_texto = '#ff4b4b' # Texto rojo para peligro
+            
+        return f'background-color: {color_fondo}; color: {color_texto}; font-weight: bold;'
 
+    # Aplicamos el estilo a la tabla
     st.dataframe(df_res.style.applymap(color_señal, subset=['Señal']), 
                  use_container_width=True, hide_index=True)
 

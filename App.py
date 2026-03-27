@@ -43,22 +43,27 @@ def procesar_ticker(symbol):
         div_yield = info.get('dividendYield', 0)
         div_str = f"{div_yield * 100:.2f}%" if div_yield else "0%"
 
-        # Lógica de Señal
-        if rsi < 35 and precio > sma50: semaforo = "🟢 COMPRA (DIP)"
-        elif rsi > 70: semaforo = "🔴 VENTA / CARO"
-        elif precio > sma50: semaforo = "🟡 MANTENER"
-        else: semaforo = "⚪ NEUTRAL"
+        # --- Lógica de Señal ESTRICTA ---
+        distancia_sma = ((precio - sma50) / sma50) * 100
         
-        return {
-            "Ticker": symbol,
-            "Precio": round(precio, 2),
-            "RSI": round(rsi, 2),
-            "P/E Ratio": pe_ratio,
-            "Dividendos": div_str,
-            "Señal": semaforo
-        }
-    except:
-        return None
+        # CASO 1: COMPRA FUERTE (El "Oasis" de inversión)
+        if rsi < 32 and precio > (sma50 * 0.98): 
+            semaforo = "🟢 COMPRA FUERTE (DIP)"
+        
+        # CASO 2: VENTA / SOBRECOMPRA (Momento de no meter más dinero)
+        elif rsi > 68:
+            semaforo = "🔴 VENTA / AGOTADO"
+        
+        # CASO 3: TENDENCIA ALCISTA SÓLIDA (Para promediar hacia arriba)
+        elif precio > sma50 and 40 < rsi < 60:
+            semaforo = "🔵 TENDENCIA SALUDABLE"
+            
+        # CASO 4: PELIGRO / TENDENCIA BAJISTA
+        elif precio < (sma50 * 0.95):
+            semaforo = "💀 EVITAR / BAJISTA"
+            
+        else:
+            semaforo = "⚪ NEUTRAL / ESPERAR"
 
 # 4. EJECUCIÓN Y TABLA
 lista_tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]

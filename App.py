@@ -6,19 +6,22 @@ import plotly.graph_objects as go
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="Screener Financiero Pro", layout="wide")
 
-st.title("🚀 Screener de Inversión Multiactivo")
-st.markdown("Analizador técnico y fundamental en tiempo real.")
+st.title("🚀 Screener de Inversión Estricto")
+st.markdown("Análisis de alta precisión: Solo verás 'Compra' en caídas técnicas reales.")
 
-# 2. BARRA LATERAL (INPUTS)
+# --- LISTA DE SUGERENCIAS ---
+SUGERENCIAS = ["QQQ", "VGT", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "NVDA", "SPY", "AMD"]
+
+# 2. BARRA LATERAL
 st.sidebar.header("Panel de Control")
-tickers_input = st.sidebar.text_input("Lista de Tickers (separados por coma):", "QQQ, VGT, AAPL, MSFT")
-periodo = st.sidebar.selectbox("Rango de la Gráfica:", ["6mo", "1y", "2y", "5y"], index=1)
+ticker_buscado = st.sidebar.selectbox("Buscador Inteligente:", options=SUGERENCIAS)
+tickers_manuales = st.sidebar.text_input("Otros Tickers (separados por coma):", "")
+periodo = st.sidebar.selectbox("Rango de Gráfica:", ["6mo", "1y", "2y"], index=1)
 
-# 3. FUNCIÓN DE PROCESAMIENTO
+# 3. FUNCIÓN DE PROCESAMIENTO (CON CIERRE CORRECTO)
 def procesar_ticker(symbol):
     try:
         t_obj = yf.Ticker(symbol)
-        # Bajamos 1 año para asegurar que el SMA50 tenga datos
         df = t_obj.history(period="1y")
         
         if df.empty or len(df) < 50:
@@ -32,10 +35,9 @@ def procesar_ticker(symbol):
         rs = gain / loss
         df['RSI'] = 100 - (100 / (1 + rs))
         
-        # Valores finales (Asegurando que sean números simples)
-        precio = float(df['Close'].iloc[-1])
-        rsi = float(df['RSI'].iloc[-1])
-        sma50 = float(df['SMA50'].iloc[-1])
+        precio = float(df['Close'].iloc[-1].item())
+        rsi = float(df['RSI'].iloc[-1].item())
+        sma50 = float(df['SMA50'].iloc[-1].item())
         
         # Datos Fundamentales
         info = t_obj.info
@@ -43,60 +45,66 @@ def procesar_ticker(symbol):
         div_yield = info.get('dividendYield', 0)
         div_str = f"{div_yield * 100:.2f}%" if div_yield else "0%"
 
-        # --- Lógica de Señal ESTRICTA ---
-        distancia_sma = ((precio - sma50) / sma50) * 100
-        
-        # CASO 1: COMPRA FUERTE (El "Oasis" de inversión)
-        if rsi < 32 and precio > (sma50 * 0.98): 
-            semaforo = "🟢 COMPRA FUERTE (DIP)"
-        
-        # CASO 2: VENTA / SOBRECOMPRA (Momento de no meter más dinero)
+        # --- LÓGICA ESTRICTA ---
+        # Caso 1: Compra en el "Dip" (RSI bajo pero tendencia sana)
+        if rsi < 32 and precio > (sma50 * 0.97):
+            semaforo = "🟢 COMPRA (DIP)"
+        # Caso 2: Sobrecompra (Demasiado caro)
         elif rsi > 68:
-            semaforo = "🔴 VENTA / AGOTADO"
-        
-        # CASO 3: TENDENCIA ALCISTA SÓLIDA (Para promediar hacia arriba)
+            semaforo = "🔴 VENTA / CARO"
+        # Caso 3: Tendencia Alcista Saludable
         elif precio > sma50 and 40 < rsi < 60:
-            semaforo = "🔵 TENDENCIA SALUDABLE"
-            
-        # CASO 4: PELIGRO / TENDENCIA BAJISTA
+            semaforo = "🔵 ALCISTA SÓLIDO"
+        # Caso 4: Debilidad / Tendencia Bajista
         elif precio < (sma50 * 0.95):
             semaforo = "💀 EVITAR / BAJISTA"
-            
         else:
-            semaforo = "⚪ NEUTRAL / ESPERAR"
+            semaforo = "⚪ NEUTRAL"
+        
+        return {
+            "Ticker": symbol, "Precio": round(precio, 2), "RSI": round(rsi, 2),
+            "P/E": pe_ratio, "Div": div_str, "Señal": semaforo
+        }
+    except Exception as e:
+        return None # Si hay error, el ticker simplemente no aparece
 
-# 4. EJECUCIÓN Y TABLA
-lista_tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
-resultados = [] # <--- AQUÍ SE DEFINE LA VARIABLE PARA EVITAR EL ERROR
+# 4. UNIFICAR Y EJECUTAR
+lista_final = [ticker_buscado]
+if tickers_manuales:
+    adicionales = [t.strip().upper() for t in tickers_manuales.split(",") if t.strip()]
+    lista_final.extend(adicionales)
+lista_final = list(set(lista_final))
 
-for t in lista_tickers:
+resultados = []
+for t in lista_final:
     res = procesar_ticker(t)
     if res:
         resultados.append(res)
 
+# 5. MOSTRAR RESULTADOS
 if resultados:
     st.subheader("📊 Comparativa de Mercado")
     df_res = pd.DataFrame(resultados)
-    st.dataframe(df_res, use_container_width=True, hide_index=True)
+    
+    # Estilo visual para la tabla
+    def color_señal(val):
+        color = '#1e1e1e'
+        if 'COMPRA' in val: color = '#06402B'
+        if 'VENTA' in val: color = '#4A0E0E'
+        if 'ALCISTA' in val: color = '#1B263B'
+        return f'background-color: {color}'
 
-    # 5. SECCIÓN DE GRÁFICA
+    st.dataframe(df_res.style.applymap(color_señal, subset=['Señal']), 
+                 use_container_width=True, hide_index=True)
+
+    # 6. GRÁFICA DETALLADA
     st.divider()
-    st.subheader("🔍 Análisis Visual Detallado")
-    ticker_sel = st.selectbox("Selecciona un activo para ver su gráfico:", lista_tickers)
-    
-    data_graf = yf.download(ticker_sel, period=periodo, interval="1d")
-    
+    st.subheader(f"🔍 Gráfico: {ticker_buscado}")
+    data_graf = yf.download(ticker_buscado, period=periodo)
     if not data_graf.empty:
         fig = go.Figure()
-        # Precio
-        fig.add_trace(go.Scatter(x=data_graf.index, y=data_graf['Close'].squeeze(), 
-                                 name='Precio', line=dict(color='#00ffcc')))
-        # SMA50
-        sma_graf = data_graf['Close'].rolling(window=50).mean()
-        fig.add_trace(go.Scatter(x=data_graf.index, y=sma_graf.squeeze(), 
-                                 name='Tendencia (50d)', line=dict(color='orange', dash='dot')))
-        
-        fig.update_layout(template="plotly_dark", height=500, hovermode="x unified")
+        fig.add_trace(go.Scatter(x=data_graf.index, y=data_graf['Close'].squeeze(), name='Precio'))
+        fig.update_layout(template="plotly_dark", height=450)
         st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("Escribe tickers válidos para empezar el análisis.")
+    st.info("Ingresa tickers en la barra lateral para comenzar.")

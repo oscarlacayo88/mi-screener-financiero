@@ -5,8 +5,8 @@ import plotly.graph_objects as go
 from streamlit_searchbox import st_searchbox
 
 # 1. CONFIGURACIÓN
-st.set_page_config(page_title="Screener Global MXN", layout="wide")
-st.title("🌎 Screener Financiero (USD & MXN)")
+st.set_page_config(page_title="Screener Pro con Target Prices", layout="wide")
+st.title("🚀 Screener Financiero: Análisis de Analistas y Drivers")
 
 # 2. FUNCIÓN DE BÚSQUEDA DINÁMICA
 def buscar_en_yahoo(search_term: str):
@@ -16,42 +16,14 @@ def buscar_en_yahoo(search_term: str):
         return [f"{q['symbol']} | {q.get('shortname', '')}" for q in yquery.quotes]
     except: return []
 
-# 3. OBTENER TIPO DE CAMBIO (USD/MXN)
-@st.cache_data(ttl=3600)
-def obtener_tipo_cambio():
-    try:
-        cva = yf.Ticker("USDMXN=X")
-        return float(cva.history(period="1d")['Close'].iloc[-1])
-    except: return 18.0 # Valor de respaldo si falla la conexión
-
-tipo_cambio = obtener_tipo_cambio()
-
-# 4. BARRA LATERAL
-st.sidebar.header("🔍 Configuración")
-seleccion_busqueda = st_searchbox(
-    buscar_en_yahoo,
-    key="search_global",
-    placeholder="Ej: Tesla, Apple, VGT...",
-    label="Buscador de Activos:"
-)
-
-tickers_manuales = st.sidebar.text_input("Otros Tickers (ej: QQQ, VOO):", "")
-
-# --- NUEVOS RANGOS SOLICITADOS ---
-periodo = st.sidebar.selectbox(
-    "Rango de la Gráfica:", 
-    ["1y", "2y", "3y", "5y"], 
-    index=0
-)
-
-# 5. FUNCIÓN DE PROCESAMIENTO ESTRICTO
+# 3. FUNCIÓN DE PROCESAMIENTO MEJORADA
 def procesar_ticker(symbol):
     try:
         t_obj = yf.Ticker(symbol)
-        df = t_obj.history(period="5y") # Bajamos suficiente historial para SMA
-        if df.empty or len(df) < 50: return None
+        df = t_obj.history(period="1y")
+        if df.empty: return None
         
-        # Cálculos Técnicos
+        # --- Análisis Técnico ---
         df['SMA50'] = df['Close'].rolling(window=50).mean()
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -63,67 +35,71 @@ def procesar_ticker(symbol):
         rsi = float(df['RSI'].iloc[-1].item())
         sma50 = float(df['SMA50'].iloc[-1].item())
         
-        # Fundamentales
+        # --- Datos de Analistas y Drivers ---
         info = t_obj.info
-        pe = info.get('trailingPE', 'N/A')
-        div = f"{info.get('dividendYield', 0)*100:.2f}%" if info.get('dividendYield') else "0%"
-
-        # Lógica de Señal Estricta
-        if rsi < 32 and precio_usd > (sma50 * 0.97): semaforo = "🟢 COMPRA (DIP)"
-        elif rsi > 68: semaforo = "🔴 VENTA / CARO"
-        elif precio_usd > sma50 and 40 < rsi < 60: semaforo = "🔵 ALCISTA"
-        elif precio_usd < (sma50 * 0.95): semaforo = "💀 EVITAR"
+        target_price = info.get('targetMeanPrice', 0)
+        upside = ((target_price - precio_usd) / precio_usd * 100) if target_price else 0
+        resumen = info.get('longBusinessSummary', "Sin descripción disponible.")
+        
+        # Lógica de Señal
+        if rsi < 32 and precio_usd > (sma50 * 0.97): semaforo = "🟢 COMPRA"
+        elif rsi > 68: semaforo = "🔴 VENTA"
         else: semaforo = "⚪ NEUTRAL"
         
         return {
-            "Ticker": symbol, 
-            "Precio USD": round(precio_usd, 2),
-            "Precio MXN": f"${round(precio_usd * tipo_cambio, 2):,}",
-            "RSI": round(rsi, 2), 
-            "P/E": pe, 
-            "Div": div, 
-            "Señal": semaforo
+            "Ticker": symbol,
+            "Precio Actual": round(precio_usd, 2),
+            "Target Price (Avg)": f"${target_price}" if target_price else "N/A",
+            "Upside Potencial": f"{upside:.2f}%" if upside else "N/A",
+            "RSI": round(rsi, 2),
+            "Señal": semaforo,
+            "Drivers": resumen
         }
     except: return None
 
-# 6. UNIFICAR LISTA
-lista_final = []
-if seleccion_busqueda:
-    lista_final.append(seleccion_busqueda.split(" | ")[0])
-if tickers_manuales:
-    adicionales = [t.strip().upper() for t in tickers_manuales.split(",") if t.strip()]
-    lista_final.extend(adicionales)
-lista_final = list(set(lista_final))
+# 4. BARRA LATERAL
+st.sidebar.header("🔍 Configuración")
+seleccion = st_searchbox(buscar_en_yahoo, key="search", label="Busca un activo:")
+tickers_extra = st.sidebar.text_input("Otros Tickers:", "")
+periodo = st.sidebar.selectbox("Rango Gráfica:", ["1y", "2y", "3y", "5y"])
 
-# 7. RESULTADOS
+# 5. UNIFICAR Y EJECUTAR
+lista = []
+if seleccion: lista.append(seleccion.split(" | ")[0])
+if tickers_extra: lista.extend([t.strip().upper() for t in tickers_extra.split(",")])
+lista = list(set(lista))
+
 resultados = []
-for t in lista_final:
+for t in lista:
     res = procesar_ticker(t)
     if res: resultados.append(res)
 
+# 6. MOSTRAR RESULTADOS
 if resultados:
-    st.subheader(f"📊 Comparativa (Tipo de Cambio: ${tipo_cambio:.2f} MXN)")
+    st.subheader("📊 Comparativa de Mercado y Analistas")
     df_res = pd.DataFrame(resultados)
     
-    def color_señal(val):
-        color = '#1e1e1e'
-        if 'COMPRA' in val: color = '#008000'
-        elif 'VENTA' in val: color = '#FF0000'
-        elif 'ALCISTA' in val: color = '#0055ff'
-        return f'background-color: {color}; color: white; font-weight: bold'
+    # Mostramos la tabla (sin la columna de Drivers para que no se vea gigante)
+    st.dataframe(df_res.drop(columns=['Drivers']), use_container_width=True, hide_index=True)
 
-    st.dataframe(df_res.style.applymap(color_señal, subset=['Señal']), use_container_width=True, hide_index=True)
-
-    # Gráfica Detallada
+    # 7. DRIVERS DE CRECIMIENTO (Expander por cada ticker)
     st.divider()
-    t_graf = lista_final[0]
-    st.subheader(f"🔍 Gráfico Histórico ({periodo}): {t_graf}")
-    data_graf = yf.download(t_graf, period=periodo)
+    st.subheader("💡 Drivers de Crecimiento y Tesis de Inversión")
     
+    for r in resultados:
+        with st.expander(f"¿Por qué invertir en {r['Ticker']}?"):
+            st.write(f"**Análisis de Analistas:** El precio objetivo promedio es de **{r['Target Price (Avg)']}**, lo que representa un retorno esperado del **{r['Upside Potencial']}**.")
+            st.write("**Resumen del Negocio:**")
+            st.info(r['Drivers'])
+
+    # 8. GRÁFICA
+    st.divider()
+    t_graf = lista[0]
+    data_graf = yf.download(t_graf, period=periodo)
     if not data_graf.empty:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=data_graf.index, y=data_graf['Close'].squeeze(), name='Precio USD'))
-        fig.update_layout(template="plotly_dark", height=450, hovermode="x unified")
+        fig.add_trace(go.Scatter(x=data_graf.index, y=data_graf['Close'].squeeze(), name='Precio'))
+        fig.update_layout(template="plotly_dark", height=400, title=f"Histórico: {t_graf}")
         st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Usa el buscador para añadir activos al análisis.")
+    st.info("Busca un activo para ver el Target Price y sus Drivers.")

@@ -47,25 +47,52 @@ if seleccion:
                 rsi = 100 - (100 / (1 + (gain/loss))).iloc[-1]
                 st.metric("RSI (14d)", f"{rsi:.2f}")
 
-        with tab2:
-            st.subheader("🎯 Consenso de Analistas")
+      with tab2:
+            st.subheader("🎯 Consenso de Equity Research")
             c1, c2, c3 = st.columns(3)
-            c1.metric("Target Low", f"${info.get('targetLowPrice', 'N/A')}")
-            c2.metric("Target Mean", f"${info.get('targetMeanPrice', 'N/A')}", help="Precio objetivo promedio")
-            c3.metric("Target High", f"${info.get('targetHighPrice', 'N/A')}")
+            
+            # Precios Objetivo
+            t_low = info.get('targetLowPrice', 'N/A')
+            t_mean = info.get('targetMeanPrice', 'N/A')
+            t_high = info.get('targetHighPrice', 'N/A')
+            
+            c1.metric("Target Mínimo", f"${t_low}")
+            c2.metric("Target Promedio", f"${t_mean}")
+            c3.metric("Target Máximo", f"${t_high}")
 
             st.divider()
-            st.subheader("📋 Últimas Calificaciones de Firmas")
-            # Extraer recomendaciones (Firms)
+            
+            # --- NUEVA LÓGICA DE RESPALDO PARA FIRMAS ---
+            st.subheader("📊 Sentimiento del Mercado")
+            
             try:
-                recomendas = t_obj.recommendations
+                # Intentamos obtener el conteo de recomendaciones (Buy, Hold, Sell)
+                recom_summary = info.get('recommendationMean', 'N/A')
+                recom_key = info.get('recommendationKey', 'N/A').upper()
+                
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    st.write(f"**Consenso Actual:** {recom_key}")
+                    st.write(f"**Puntuación (1-5):** {recom_summary}")
+                    st.caption("1.0 = Compra Fuerte | 5.0 = Venta Fuerte")
+
+                # Intentamos mostrar la tabla de firmas con un método alternativo
+                recomendas = t_obj.get_recommendations() # Usamos la función directa
+                
                 if recomendas is not None and not recomendas.empty:
-                    # Mostramos las últimas 8 para que quepan bien
-                    st.dataframe(recomendas.tail(8)[['Firm', 'To Grade', 'Action']], use_container_width=True)
+                    st.write("### 📋 Desglose de Firmas Analistas")
+                    # Limpiamos y mostramos solo lo relevante
+                    df_slim = recomendas.tail(10).reset_index()
+                    # Si las columnas esperadas no existen, mostramos lo que haya
+                    st.dataframe(df_slim, use_container_width=True)
                 else:
-                    st.info("No hay desglose detallado reciente. Recomendación general: " + str(info.get('recommendationKey', 'N/A')).upper())
-            except:
-                st.error("Error al conectar con el servidor de recomendaciones.")
+                    # Si la tabla falla, mostramos los datos fundamentales de crecimiento
+                    st.warning("⚠️ El desglose detallado por firmas no está disponible públicamente para este activo.")
+                    st.info(f"**Tip de Analista:** El crecimiento de ingresos reportado es del {info.get('revenueGrowth', 0)*100:.1f}% y el margen operativo es del {info.get('operatingMargins', 0)*100:.1f}%.")
+            
+            except Exception as e:
+                st.error("No se pudo obtener el desglose de firmas. Mostrando datos de valor:")
+                st.write(f"**Precio Actual vs Objetivo:** La acción está a un {((float(t_mean)/precio_actual)-1)*100:.2f}% de su precio objetivo promedio.")
 
         with tab3:
             # GRÁFICA CORREGIDA (Sin bloqueos de carga)
